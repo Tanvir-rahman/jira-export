@@ -1,28 +1,50 @@
-# jira-export
+# jira-export — export everything from Jira Cloud to JSON & CSV
 
-Export **everything a Jira Cloud API token can reach** — issues, sprints,
-sprint reports, boards, dashboards, audit log, Product Discovery views &
-insights — into flat JSON + CSV files. No database, no framework, no OAuth
-app registration. One command.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Jira Cloud REST API v3](https://img.shields.io/badge/Jira%20Cloud-REST%20API%20v3-0052CC.svg?logo=jira&logoColor=white)](https://developer.atlassian.com/cloud/jira/platform/rest/v3/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tanvir-rahman/jira-export/pulls)
 
-Also includes `jira_seed.py`: fill an empty Jira site with realistic demo
-data (projects, 340+ issues, closed sprints with real velocity, teams) —
-useful for building dashboards or demos against a believable dataset.
+**One command** exports everything a Jira Cloud API token can reach into
+~60 flat JSON + CSV files — ready for pandas, Excel, Power BI, Tableau, or
+any data pipeline. No database, no framework, no OAuth app registration.
 
-## Why
+```bash
+python jira_export.py
+```
 
-- Jira's own CSV export caps at 1000 issues and drops most entities.
-- Jira's backup ZIP is admin-only, async, and not analysis-friendly.
-- Marketplace exporters cost money and still miss sprint reports & JPD data.
+**What makes it different** — it exports the data other tools can't:
 
-This tool hits the REST API (plus two internal-but-working APIs, see
-[Limitations](#limitations)) and writes ~60 plain files you can load into
-pandas, a spreadsheet, or a BI tool directly.
+- 🏃 **Sprint reports & velocity** — committed vs completed vs punted per
+  sprint, straight from the same API the Jira UI uses
+- 💡 **Jira Product Discovery** — views, viewsets, insights, and idea
+  scores (Impact/Effort/Confidence/Reach) via Atlassian's experimental
+  GraphQL API
+- 📜 **Full audit log**, backlog rank order, swimlanes & quick filters,
+  workflow/permission/notification schemes, license seats
+- 🕐 **Complete issue history** (changelogs), comments, worklogs,
+  watchers, voters, attachments with binaries
+- 👥 **Atlassian Teams** with members, groups, project roles
+
+Bonus: `jira_seed.py` fills an empty Jira site with realistic demo data
+(3 projects, 340+ issues, 12 closed sprints with real velocity, teams) —
+perfect for building dashboards against a believable dataset.
+
+## Why not the built-in export?
+
+| | Jira CSV export | Jira backup ZIP | **jira-export** |
+|---|---|---|---|
+| Issue limit | 1,000 | unlimited | unlimited |
+| Sprint reports / velocity | ❌ | ❌ | ✅ |
+| Product Discovery data | ❌ | ❌ | ✅ |
+| Audit log, schemes, boards | ❌ | partial | ✅ |
+| Analysis-ready CSV | partial | ❌ (XML) | ✅ |
+| Needs admin + wait queue | ❌ | ✅ | ❌ |
 
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/jira-export && cd jira-export
+git clone https://github.com/Tanvir-rahman/jira-export && cd jira-export
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
