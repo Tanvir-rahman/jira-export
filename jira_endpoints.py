@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 jira_endpoints.py — every API endpoint used by the exporter, in one place.
 

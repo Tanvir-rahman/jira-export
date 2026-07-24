@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 jira_export_jpd.py — Jira Product Discovery (polaris) views + insights export.
 
@@ -41,7 +40,7 @@ JPD_QUERY = """query jpdExport($id: ID!) {
       snippets { id data url properties }
     }
   }
-}""" % (VIEW_FIELDS, VIEW_FIELDS)
+}""" % (VIEW_FIELDS, VIEW_FIELDS)  # noqa: UP031 — GraphQL braces clash with str.format
 
 
 def gql(session, query, variables):

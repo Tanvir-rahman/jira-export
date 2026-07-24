@@ -162,11 +162,11 @@ def ensure_project(s, key, name, template, lead_id):
         return proj
     payload = {"key": key, "name": name, "projectTypeKey": "software",
                "projectTemplateKey": template, "leadAccountId": lead_id}
-    code, created = req(s, "POST", "/rest/api/3/project", payload)
+    code, _ = req(s, "POST", "/rest/api/3/project", payload)
     if code not in (200, 201):
         classic = template.replace("agility-scrum", "scrum-classic") \
                           .replace("agility-kanban", "kanban-classic")
-        code, created = req(s, "POST", "/rest/api/3/project", {**payload, "projectTemplateKey": classic})
+        code, _ = req(s, "POST", "/rest/api/3/project", {**payload, "projectTemplateKey": classic})
         if code not in (200, 201):
             sys.exit(f"Could not create project {key}")
     print(f"    created project {key} — {name}")
@@ -190,8 +190,8 @@ def board_for_project(s, key):
 
 
 def assignable_users(s, key, fallback):
-    code, users = req(s, "GET", "/rest/api/3/user/assignable/search",
-                      params={"project": key, "maxResults": 50}, quiet=True)
+    _, users = req(s, "GET", "/rest/api/3/user/assignable/search",
+                   params={"project": key, "maxResults": 50}, quiet=True)
     ids = [u["accountId"] for u in users or []
            if u.get("accountType") == "atlassian" and u.get("active")]
     return ids or [fallback]
@@ -223,8 +223,8 @@ def bulk_create(s, issue_fields_list):
     keys = []
     for i in range(0, len(issue_fields_list), 50):
         chunk = issue_fields_list[i:i + 50]
-        code, data = req(s, "POST", "/rest/api/3/issue/bulk",
-                         {"issueUpdates": [{"fields": f} for f in chunk]})
+        _, data = req(s, "POST", "/rest/api/3/issue/bulk",
+                      {"issueUpdates": [{"fields": f} for f in chunk]})
         if data:
             keys.extend(iss["key"] for iss in data.get("issues", []))
             for e in data.get("errors", []):

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 jira_export_admin.py — site configuration, audit log, and board internals.
 
@@ -27,7 +26,7 @@ NOT accessible with an API token: webhook registrations
 import requests
 
 import jira_endpoints as EP
-from jira_export import _dn, api_get, paginate_startat, write_csv, write_json
+from jira_export import api_get, paginate_startat, write_csv, write_json
 
 
 # --------------------------------------------------------------------------- #

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 jira_export_extras.py — additional exports layered on top of jira_export.py.
 
@@ -29,6 +28,7 @@ import requests
 
 import jira_endpoints as EP
 from jira_export import _dn, api_get, paginate_startat, write_csv, write_json
+
 
 # --------------------------------------------------------------------------- #
 # Dashboards, filters, board config
@@ -271,8 +271,7 @@ def download_attachments(s, out_dir, issues):
                 r = s.get(url, stream=True, timeout=120)
                 r.raise_for_status()
                 with open(dest, "wb") as fh:
-                    for chunk in r.iter_content(65536):
-                        fh.write(chunk)
+                    fh.writelines(r.iter_content(65536))
                 count += 1
             except requests.HTTPError as e:
                 print(f"      {iss['key']} {a.get('filename')}: skipped ({e})")

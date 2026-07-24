@@ -73,9 +73,9 @@ import sys
 import time
 from datetime import datetime, timezone
 
-import jira_endpoints as EP
-
 from dotenv import load_dotenv
+
+import jira_endpoints as EP
 
 load_dotenv()
 
