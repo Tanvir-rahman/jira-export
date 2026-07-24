@@ -125,8 +125,10 @@ actually move through the seeded sprints.
 
 Module layout: `jira_export.py` (entry point + core), `jira_export_extras.py`
 (dashboards/reports/schemes), `jira_export_jpd.py` (Product Discovery),
-`jira_export_admin.py` (site config/audit/board internals). See
-[CLAUDE.md](CLAUDE.md) for architecture details and API gotchas.
+`jira_export_admin.py` (site config/audit/board internals),
+`jira_endpoints.py` (every API path in one place — when Atlassian moves an
+endpoint, fix one file). See [CLAUDE.md](CLAUDE.md) for architecture details
+and API gotchas.
 
 ## Limitations
 

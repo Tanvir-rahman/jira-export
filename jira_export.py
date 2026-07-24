@@ -73,6 +73,8 @@ import sys
 import time
 from datetime import datetime, timezone
 
+import jira_endpoints as EP
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -205,7 +207,7 @@ def search_all_issues(session, jql, fields, page_size=100):
         payload = {"jql": jql, "maxResults": page_size, "fields": fields}
         if next_token:
             payload["nextPageToken"] = next_token
-        data = api_post(session, "/rest/api/3/search/jql", payload)
+        data = api_post(session, EP.SEARCH_JQL, payload)
         issues = data.get("issues", [])
         out.extend(issues)
         print(f"    fetched {len(out)} issues...")
@@ -243,17 +245,17 @@ def adf_to_text(node):
 # Per-issue detail fetchers (comments / worklogs / changelog top-up)
 # --------------------------------------------------------------------------- #
 def get_all_comments(session, issue_key):
-    return paginate_startat(session, f"/rest/api/3/issue/{issue_key}/comment",
+    return paginate_startat(session, EP.ISSUE_COMMENTS.format(key=issue_key),
                             "comments", page_size=100)
 
 
 def get_all_worklogs(session, issue_key):
-    return paginate_startat(session, f"/rest/api/3/issue/{issue_key}/worklog",
+    return paginate_startat(session, EP.ISSUE_WORKLOGS.format(key=issue_key),
                             "worklogs", page_size=100)
 
 
 def get_changelog(session, issue_key):
-    return paginate_startat(session, f"/rest/api/3/issue/{issue_key}/changelog",
+    return paginate_startat(session, EP.ISSUE_CHANGELOG.format(key=issue_key),
                             "values", page_size=100)
 
 
@@ -491,12 +493,12 @@ def main():
     s = build_session(base_url, email, token)
 
     print("[0/9] Authenticating...")
-    me = api_get(s, "/rest/api/3/myself")
+    me = api_get(s, EP.MYSELF)
     print(f"    OK — {me.get('displayName')} <{me.get('emailAddress', 'n/a')}>")
 
     # ---- 1. Projects -------------------------------------------------------
     print("[1/9] Projects...")
-    projects = paginate_startat(s, "/rest/api/3/project/search", "values",
+    projects = paginate_startat(s, EP.PROJECT_SEARCH, "values",
                                 params={"expand": "description,lead,insight"})
     write_json(args.out, "projects.json", projects)
     write_csv(args.out, "projects.csv", [{
@@ -509,7 +511,7 @@ def main():
     # ---- 2. Users ----------------------------------------------------------
     print("[2/9] Users...")
     try:
-        users = paginate_bare_list(s, "/rest/api/3/users/search")
+        users = paginate_bare_list(s, EP.USERS_SEARCH)
         write_json(args.out, "users.json", users)
         write_csv(args.out, "users.csv", [{
             "account_id": u.get("accountId"), "display_name": u.get("displayName"),
@@ -522,13 +524,13 @@ def main():
     # ---- 3. Groups + members ----------------------------------------------
     print("[3/9] Groups and group members...")
     try:
-        groups = paginate_startat(s, "/rest/api/3/group/bulk", "values")
+        groups = paginate_startat(s, EP.GROUP_BULK, "values")
         write_json(args.out, "groups.json", groups)
         member_rows = []
         for g in groups:
             gid, gname = g.get("groupId"), g.get("name")
             try:
-                members = paginate_startat(s, "/rest/api/3/group/member",
+                members = paginate_startat(s, EP.GROUP_MEMBER,
                                            "values", params={"groupId": gid})
                 for m in members:
                     member_rows.append({
@@ -553,8 +555,7 @@ def main():
                 params = {"size": 50}
                 if cursor:
                     params["cursor"] = cursor
-                data = api_get(s, f"/gateway/api/public/teams/v1/org/{org_id}/teams",
-                               params)
+                data = api_get(s, EP.TEAMS.format(org_id=org_id), params)
                 ents = data.get("entities", [])
                 teams.extend(ents)
                 cursor = data.get("cursor")
@@ -576,7 +577,7 @@ def main():
                         if after:
                             body["after"] = after
                         data = api_post(
-                            s, f"/gateway/api/public/teams/v1/org/{org_id}/teams/{tid}/members",
+                            s, EP.TEAM_MEMBERS.format(org_id=org_id, team_id=tid),
                             body)
                         for m in data.get("results", []):
                             team_member_rows.append({
@@ -599,12 +600,12 @@ def main():
 
     # ---- 5. Reference data --------------------------------------------------
     print("[5/9] Reference data...")
-    all_fields = api_get(s, "/rest/api/3/field")
+    all_fields = api_get(s, EP.FIELDS)
     write_json(args.out, "fields.json", all_fields)
-    write_json(args.out, "issuetypes.json", api_get(s, "/rest/api/3/issuetype"))
-    write_json(args.out, "statuses.json", api_get(s, "/rest/api/3/status"))
-    write_json(args.out, "priorities.json", api_get(s, "/rest/api/3/priority"))
-    write_json(args.out, "resolutions.json", api_get(s, "/rest/api/3/resolution"))
+    write_json(args.out, "issuetypes.json", api_get(s, EP.ISSUE_TYPES))
+    write_json(args.out, "statuses.json", api_get(s, EP.STATUSES))
+    write_json(args.out, "priorities.json", api_get(s, EP.PRIORITIES))
+    write_json(args.out, "resolutions.json", api_get(s, EP.RESOLUTIONS))
 
     # Detect useful custom fields by name
     story_points_ids, sprint_id, epic_link_id = [], None, None
@@ -675,12 +676,12 @@ def main():
     if not args.no_agile:
         print("[9/9] Boards and sprints...")
         try:
-            boards = paginate_startat(s, "/rest/agile/1.0/board", "values")
+            boards = paginate_startat(s, EP.BOARDS, "values")
             write_json(args.out, "boards.json", boards)
             all_sprints, seen = [], set()
             for b in boards:
                 try:
-                    for sp in paginate_startat(s, f"/rest/agile/1.0/board/{b['id']}/sprint",
+                    for sp in paginate_startat(s, EP.BOARD_SPRINTS.format(board_id=b['id']),
                                                "values", quiet=True):
                         if sp.get("id") not in seen:
                             seen.add(sp.get("id"))

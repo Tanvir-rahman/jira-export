@@ -37,6 +37,13 @@ jira_export.py          steps 0-9: auth, projects, users, groups, teams,
  |                              remote links
 ```
 
+**Every URL path lives in `jira_endpoints.py`** — imported everywhere as
+`import jira_endpoints as EP`. Constants use `str.format()` placeholders
+(`EP.ISSUE_COMMENTS.format(key="ABC-1")`) and are annotated with stability
+tiers: `[stable]` (documented REST v3 / Agile 1.0), `[internal]`
+(greenhopper), `[experimental]` (polaris GraphQL). When Atlassian moves an
+endpoint, fix it there — no other file may contain a URL path.
+
 Shared helpers live in `jira_export.py` and are imported by the submodules:
 
 - `build_session(url, email, token)` — `requests.Session` with Basic auth
@@ -143,8 +150,10 @@ Do not attempt; verified dead ends (HTTP status in parens):
 
 ## Conventions for extending
 
-- New endpoint → add to the matching module by topic (core / extras / jpd /
-  admin); keep `jira_export.py` the only entry point.
+- New endpoint → declare the path in `jira_endpoints.py` first (with a
+  stability tag), then add the export function to the matching module by
+  topic (core / extras / jpd / admin); keep `jira_export.py` the only entry
+  point. Never inline a URL path in an export module.
 - Wrap per-item calls in `try/except requests.HTTPError` and continue —
   a single 403/404 must never kill the export.
 - Every tabular dataset gets **both** `write_json` and `write_csv`.

@@ -26,6 +26,7 @@ NOT accessible with an API token: webhook registrations
 
 import requests
 
+import jira_endpoints as EP
 from jira_export import _dn, api_get, paginate_startat, write_csv, write_json
 
 
@@ -34,27 +35,27 @@ from jira_export import _dn, api_get, paginate_startat, write_csv, write_json
 # --------------------------------------------------------------------------- #
 def export_site_reference(s, out_dir):
     write_json(out_dir, "labels.json",
-               paginate_startat(s, "/rest/api/3/label", "values", page_size=1000))
+               paginate_startat(s, EP.LABELS, "values", page_size=1000))
     write_json(out_dir, "issue_link_types.json",
-               api_get(s, "/rest/api/3/issueLinkType").get("issueLinkTypes", []))
+               api_get(s, EP.ISSUE_LINK_TYPES).get("issueLinkTypes", []))
     write_json(out_dir, "site_info.json", {
-        "server_info": api_get(s, "/rest/api/3/serverInfo"),
-        "configuration": api_get(s, "/rest/api/3/configuration"),
+        "server_info": api_get(s, EP.SERVER_INFO),
+        "configuration": api_get(s, EP.CONFIGURATION),
     })
     write_json(out_dir, "project_categories.json",
-               api_get(s, "/rest/api/3/projectCategory"))
+               api_get(s, EP.PROJECT_CATEGORIES))
     for name, path in [
-        ("application_roles.json", "/rest/api/3/applicationrole"),
+        ("application_roles.json", EP.APPLICATION_ROLES),
     ]:
         try:
             write_json(out_dir, name, api_get(s, path, quiet=True))
         except requests.HTTPError:
             print(f"    ({name}: needs admin, skipped)")
     for name, path in [
-        ("screens.json", "/rest/api/3/screens"),
-        ("field_configurations.json", "/rest/api/3/fieldconfiguration"),
-        ("issue_type_schemes.json", "/rest/api/3/issuetypescheme"),
-        ("priority_schemes.json", "/rest/api/3/priorityscheme"),
+        ("screens.json", EP.SCREENS),
+        ("field_configurations.json", EP.FIELD_CONFIGS),
+        ("issue_type_schemes.json", EP.ISSUE_TYPE_SCHEMES),
+        ("priority_schemes.json", EP.PRIORITY_SCHEMES),
     ]:
         try:
             write_json(out_dir, name,
@@ -66,7 +67,7 @@ def export_site_reference(s, out_dir):
 def export_audit_log(s, out_dir, page_size=1000):
     records, offset = [], 0
     while True:
-        data = api_get(s, "/rest/api/3/auditing/record",
+        data = api_get(s, EP.AUDIT_RECORDS,
                        {"offset": offset, "limit": page_size})
         batch = data.get("records", [])
         records.extend(batch)
@@ -92,7 +93,7 @@ def export_board_settings(s, out_dir, boards):
     settings, qf_rows, swim_rows = [], [], []
     for b in boards:
         try:
-            cfg = api_get(s, "/rest/greenhopper/1.0/rapidviewconfig/editmodel",
+            cfg = api_get(s, EP.GH_RAPIDVIEW_CONFIG,
                           {"rapidViewId": b["id"]}, quiet=True)
         except requests.HTTPError:
             continue
@@ -113,7 +114,7 @@ def export_board_epics_and_backlog(s, out_dir, boards):
     epic_rows, backlog_rows = [], []
     for b in boards:
         try:
-            for e in paginate_startat(s, f"/rest/agile/1.0/board/{b['id']}/epic",
+            for e in paginate_startat(s, EP.BOARD_EPICS.format(board_id=b['id']),
                                       "values", quiet=True):
                 epic_rows.append({
                     "board_id": b["id"], "epic_key": e.get("key"),
@@ -125,7 +126,7 @@ def export_board_epics_and_backlog(s, out_dir, boards):
         try:
             start, pos = 0, 1
             while True:
-                data = api_get(s, f"/rest/agile/1.0/board/{b['id']}/backlog",
+                data = api_get(s, EP.BOARD_BACKLOG.format(board_id=b['id']),
                                {"startAt": start, "maxResults": 100,
                                 "fields": "summary"}, quiet=True)
                 issues = data.get("issues", [])
@@ -153,7 +154,7 @@ def export_project_features(s, out_dir, projects):
     rows = []
     for p in projects:
         try:
-            for f in api_get(s, f"/rest/api/3/project/{p['key']}/features",
+            for f in api_get(s, EP.PROJECT_FEATURES.format(key=p['key']),
                              quiet=True).get("features", []):
                 rows.append({"project_key": p["key"], "feature": f.get("feature"),
                              "state": f.get("state")})
@@ -170,7 +171,7 @@ def export_voters(s, out_dir, issues):
     print(f"    fetching voters for {len(targets)} issues...")
     for iss in targets:
         try:
-            data = api_get(s, f"/rest/api/3/issue/{iss['key']}/votes", quiet=True)
+            data = api_get(s, EP.ISSUE_VOTES.format(key=iss['key']), quiet=True)
         except requests.HTTPError:
             continue
         for v in data.get("voters", []):
@@ -187,7 +188,7 @@ def export_remote_links(s, out_dir, issues):
           f"(1 request each)...")
     for n, iss in enumerate(issues, 1):
         try:
-            links = api_get(s, f"/rest/api/3/issue/{iss['key']}/remotelink",
+            links = api_get(s, EP.ISSUE_REMOTE_LINKS.format(key=iss['key']),
                             quiet=True)
         except requests.HTTPError:
             continue

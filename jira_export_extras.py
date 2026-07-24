@@ -27,21 +27,19 @@ import re
 
 import requests
 
+import jira_endpoints as EP
 from jira_export import _dn, api_get, paginate_startat, write_csv, write_json
-
-GH_CHARTS = "/rest/greenhopper/1.0/rapid/charts"
-
 
 # --------------------------------------------------------------------------- #
 # Dashboards, filters, board config
 # --------------------------------------------------------------------------- #
 def export_dashboards(s, out_dir):
-    dashboards = paginate_startat(s, "/rest/api/3/dashboard", "dashboards")
+    dashboards = paginate_startat(s, EP.DASHBOARDS, "dashboards")
     write_json(out_dir, "dashboards.json", dashboards)
     gadget_rows = []
     for d in dashboards:
         try:
-            for g in api_get(s, f"/rest/api/3/dashboard/{d['id']}/gadget").get("gadgets", []):
+            for g in api_get(s, EP.DASHBOARD_GADGETS.format(dashboard_id=d['id'])).get("gadgets", []):
                 gadget_rows.append({
                     "dashboard_id": d.get("id"), "dashboard_name": d.get("name"),
                     "gadget_id": g.get("id"), "module_key": g.get("moduleKey"),
@@ -54,7 +52,7 @@ def export_dashboards(s, out_dir):
 
 
 def export_filters(s, out_dir):
-    filters = paginate_startat(s, "/rest/api/3/filter/search", "values",
+    filters = paginate_startat(s, EP.FILTER_SEARCH, "values",
                                params={"expand": "jql,owner,sharePermissions"})
     write_json(out_dir, "filters.json", filters)
     write_csv(out_dir, "filters.csv", [{
@@ -67,7 +65,7 @@ def export_board_configs(s, out_dir, boards):
     configs, column_rows = [], []
     for b in boards:
         try:
-            cfg = api_get(s, f"/rest/agile/1.0/board/{b['id']}/configuration")
+            cfg = api_get(s, EP.BOARD_CONFIG.format(board_id=b['id']))
         except requests.HTTPError:
             continue
         configs.append(cfg)
@@ -88,7 +86,7 @@ def export_velocity(s, out_dir, boards):
     raw, rows = [], []
     for b in boards:
         try:
-            data = api_get(s, f"{GH_CHARTS}/velocity", {"rapidViewId": b["id"]},
+            data = api_get(s, EP.GH_VELOCITY, {"rapidViewId": b["id"]},
                            quiet=True)
         except requests.HTTPError:
             continue
@@ -121,7 +119,7 @@ def export_sprint_reports(s, out_dir, sprints):
             continue
         board_id = sp.get("_board_id") or sp.get("originBoardId")
         try:
-            data = api_get(s, f"{GH_CHARTS}/sprintreport",
+            data = api_get(s, EP.GH_SPRINT_REPORT,
                            {"rapidViewId": board_id, "sprintId": sp["id"]},
                            quiet=True)
         except requests.HTTPError:
@@ -155,7 +153,7 @@ def export_burndowns(s, out_dir, sprints):
             continue
         board_id = sp.get("_board_id") or sp.get("originBoardId")
         try:
-            data = api_get(s, f"{GH_CHARTS}/scopechangeburndownchart",
+            data = api_get(s, EP.GH_BURNDOWN,
                            {"rapidViewId": board_id, "sprintId": sp["id"]},
                            quiet=True)
         except requests.HTTPError:
@@ -170,17 +168,17 @@ def export_burndowns(s, out_dir, sprints):
 # --------------------------------------------------------------------------- #
 def export_workflows_and_schemes(s, out_dir):
     write_json(out_dir, "workflows.json",
-               paginate_startat(s, "/rest/api/3/workflow/search", "values"))
+               paginate_startat(s, EP.WORKFLOW_SEARCH, "values"))
     write_json(out_dir, "workflow_schemes.json",
-               paginate_startat(s, "/rest/api/3/workflowscheme", "values"))
+               paginate_startat(s, EP.WORKFLOW_SCHEMES, "values"))
     write_json(out_dir, "permission_schemes.json",
-               api_get(s, "/rest/api/3/permissionscheme",
+               api_get(s, EP.PERMISSION_SCHEMES,
                        {"expand": "permissions"}).get("permissionSchemes", []))
     write_json(out_dir, "notification_schemes.json",
-               paginate_startat(s, "/rest/api/3/notificationscheme", "values",
+               paginate_startat(s, EP.NOTIFICATION_SCHEMES, "values",
                                 params={"expand": "all"}))
     write_json(out_dir, "issue_security_schemes.json",
-               api_get(s, "/rest/api/3/issuesecurityschemes")
+               api_get(s, EP.ISSUE_SECURITY_SCHEMES)
                .get("issueSecuritySchemes", []))
 
 
@@ -191,14 +189,14 @@ def export_project_details(s, out_dir, projects):
     versions, components, role_rows = [], [], []
     for p in projects:
         key = p.get("key")
-        for v in api_get(s, f"/rest/api/3/project/{key}/versions"):
+        for v in api_get(s, EP.PROJECT_VERSIONS.format(key=key)):
             v["_project_key"] = key
             versions.append(v)
-        for c in api_get(s, f"/rest/api/3/project/{key}/components"):
+        for c in api_get(s, EP.PROJECT_COMPONENTS.format(key=key)):
             c["_project_key"] = key
             components.append(c)
         try:
-            roles = api_get(s, f"/rest/api/3/project/{key}/role")
+            roles = api_get(s, EP.PROJECT_ROLES.format(key=key))
             for role_name, role_url in roles.items():
                 for actor in api_get(s, role_url, quiet=True).get("actors", []):
                     role_rows.append({
@@ -237,7 +235,7 @@ def export_watchers(s, out_dir, issues, fetch_all=False):
     print(f"    fetching watchers for {len(targets)} issues...")
     for n, iss in enumerate(targets, 1):
         try:
-            data = api_get(s, f"/rest/api/3/issue/{iss['key']}/watchers", quiet=True)
+            data = api_get(s, EP.ISSUE_WATCHERS.format(key=iss['key']), quiet=True)
         except requests.HTTPError:
             continue
         for w in data.get("watchers", []):

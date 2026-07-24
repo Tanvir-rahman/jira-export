@@ -20,6 +20,7 @@ may come back null over the REST issue API.
 
 import requests
 
+import jira_endpoints as EP
 from jira_export import adf_to_text, api_get, search_all_issues, write_csv, write_json
 
 VIEW_FIELDS = ("id uuid name emoji visualizationType containsArchived jql "
@@ -44,7 +45,7 @@ JPD_QUERY = """query jpdExport($id: ID!) {
 
 
 def gql(session, query, variables):
-    r = session.post(f"{session.base_url}/gateway/api/graphql",
+    r = session.post(session.base_url + EP.GRAPHQL,
                      json={"query": query, "variables": variables},
                      headers={"X-ExperimentalApi": "polaris-v0"})
     r.raise_for_status()
@@ -76,7 +77,7 @@ def export_jpd(s, out_dir, projects, issues):
         print("    no product_discovery projects — skipping JPD export")
         return
 
-    cloud_id = api_get(s, "/_edge/tenant_info").get("cloudId")
+    cloud_id = api_get(s, EP.TENANT_INFO).get("cloudId")
     key_by_id = _issue_key_by_ari(issues)
 
     all_viewsets, view_rows, all_insights, insight_rows = [], [], [], []
@@ -123,7 +124,7 @@ def export_jpd(s, out_dir, projects, issues):
 
 def _export_idea_fields(s, out_dir, pd_projects):
     """Ideas with JPD custom field values (RICE, impact, effort, ...)."""
-    jpd_fields = [f for f in api_get(s, "/rest/api/3/field")
+    jpd_fields = [f for f in api_get(s, EP.FIELDS)
                   if "polaris" in ((f.get("schema") or {}).get("custom") or "")]
     fids = [f["id"] for f in jpd_fields]
     names = {f["id"]: f["name"] for f in jpd_fields}
