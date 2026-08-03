@@ -109,7 +109,7 @@ class _FakeSession:
     """Serves startAt-paginated pages of 2 items from a 3-item dataset."""
     base_url = "https://fake"
 
-    def get(self, url, params=None):
+    def get(self, url, params=None, **kwargs):
         start = params["startAt"]
         items = [{"id": i} for i in range(3)][start:start + 2]
         return _FakeResp({"startAt": start, "total": 3, "values": items})

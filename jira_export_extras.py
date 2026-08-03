@@ -114,9 +114,10 @@ def _issue_keys(items):
 
 def export_sprint_reports(s, out_dir, sprints):
     raw, rows = [], []
-    for sp in sprints:
-        if sp.get("state") == "future":
-            continue
+    todo = [sp for sp in sprints if sp.get("state") != "future"]
+    for i, sp in enumerate(todo, 1):
+        if i % 100 == 0 or i == len(todo):
+            print(f"    sprint reports: {i}/{len(todo)}")
         board_id = sp.get("_board_id") or sp.get("originBoardId")
         try:
             data = api_get(s, EP.GH_SPRINT_REPORT,
@@ -148,9 +149,10 @@ def export_sprint_reports(s, out_dir, sprints):
 
 def export_burndowns(s, out_dir, sprints):
     raw = []
-    for sp in sprints:
-        if sp.get("state") == "future":
-            continue
+    todo = [sp for sp in sprints if sp.get("state") != "future"]
+    for i, sp in enumerate(todo, 1):
+        if i % 100 == 0 or i == len(todo):
+            print(f"    burndowns: {i}/{len(todo)}")
         board_id = sp.get("_board_id") or sp.get("originBoardId")
         try:
             data = api_get(s, EP.GH_BURNDOWN,
@@ -302,8 +304,12 @@ def export_extras(s, out_dir, projects, issues, boards, sprints,
     print("[14] Project versions, components, roles...")
     export_project_details(s, out_dir, projects)
 
-    print("[15] Watchers...")
-    export_watchers(s, out_dir, issues, fetch_all=fetch_all_watchers)
+    if fetch_all_watchers:
+        print("[15] Watchers...")
+        export_watchers(s, out_dir, issues, fetch_all=True)
+    else:
+        print("[15] Watchers skipped (run with --watchers to include).")
+        write_json(out_dir, "watchers.json", [])
 
     if fetch_attachments:
         print("[16] Downloading attachment binaries...")

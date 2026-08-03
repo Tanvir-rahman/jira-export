@@ -111,7 +111,9 @@ def export_board_settings(s, out_dir, boards):
 
 def export_board_epics_and_backlog(s, out_dir, boards):
     epic_rows, backlog_rows = [], []
-    for b in boards:
+    for i, b in enumerate(boards, 1):
+        if i % 25 == 0 or i == len(boards):
+            print(f"    epics/backlog: board {i}/{len(boards)}")
         try:
             for e in paginate_startat(s, EP.BOARD_EPICS.format(board_id=b['id']),
                                       "values", quiet=True):

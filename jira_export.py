@@ -90,6 +90,9 @@ except ImportError:
 # --------------------------------------------------------------------------- #
 MAX_RETRIES = 6
 MAX_WAIT = 60
+# Per-request timeout (seconds). Without one, a dead connection (e.g. after a
+# network switch) hangs forever instead of erroring and retrying.
+REQUEST_TIMEOUT = 60
 
 
 def build_session(base_url, email, token):
@@ -119,10 +122,17 @@ def _request(session, method, path, params=None, payload=None, quiet=False):
     url = path if path.startswith("http") else f"{session.base_url}{path}"
     last = None
     for attempt in range(MAX_RETRIES):
-        if method == "GET":
-            r = session.get(url, params=params)
-        else:
-            r = session.post(url, params=params, data=json.dumps(payload or {}))
+        try:
+            if method == "GET":
+                r = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            else:
+                r = session.post(url, params=params, data=json.dumps(payload or {}),
+                                 timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            w = min(2 ** attempt, MAX_WAIT)
+            print(f"    network error ({e.__class__.__name__}) — retrying in {w:.0f}s")
+            time.sleep(w)
+            continue
         last = r
         if r.status_code == 429:
             w = _wait_time(r, attempt)
@@ -136,6 +146,9 @@ def _request(session, method, path, params=None, payload=None, quiet=False):
             print(f"    HTTP {r.status_code} from {url}: {r.text[:500]}")
         r.raise_for_status()
         return r.json() if r.text else {}
+    if last is None:
+        raise requests.ConnectionError(
+            f"gave up after {MAX_RETRIES} network errors: {url}")
     last.raise_for_status()
 
 
