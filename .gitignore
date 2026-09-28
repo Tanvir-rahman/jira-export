@@ -2,8 +2,9 @@
 .env
 
 # Exported data (contains real user info)
-jira_export/
+*_export/
 jira_test/
+export-*.csv
 
 # Python
 .venv/

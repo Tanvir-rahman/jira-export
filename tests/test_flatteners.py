@@ -5,7 +5,7 @@ Run:  pytest
 
 import jira_export as je
 from jira_export_extras import _safe_filename
-from jira_export_jpd import _issue_key_by_ari, _walk_views
+from jira_export_jpd import _cell, _issue_key_by_ari, _view_row, _walk_views
 
 
 # --------------------------------------------------------------------------- #
@@ -132,6 +132,31 @@ def test_walk_views_flattens_nested_viewsets_with_path():
     assert got == [("Prioritize", "All ideas"), ("Prioritize/More", "Custom")]
 
 
+def test_view_row_flattens_field_refs_and_handles_single_or_list():
+    v = {"name": "Board", "visualizationType": "BOARD",
+         "containsArchived": False, "sortMode": "PROJECT_RANK",
+         "verticalGroupBy": {"id": "x", "jiraFieldKey": "customfield_10761"},
+         # experimental schema may hand back a single object instead of a list
+         "filter": {"kind": "FIELD_NUMERIC",
+                    "field": {"jiraFieldKey": "customfield_13165"},
+                    "values": [{"numericValue": 1, "operator": "EQ"}]},
+         "sort": [{"field": {"jiraFieldKey": "created"}, "order": "DESC"}],
+         "fields": [{"jiraFieldKey": "summary"},
+                    {"jiraFieldKey": "customfield_13165"}]}
+    row = _view_row("PCP", "Prioritize", v)
+    assert row["project_key"] == "PCP"
+    assert row["contains_archived"] is False
+    assert row["group_by"] is None
+    assert row["vertical_group_by"] == "customfield_10761"
+    assert row["filter"] == [{"kind": "FIELD_NUMERIC",
+                              "field": "customfield_13165",
+                              "values": [{"numericValue": 1, "operator": "EQ"}]}]
+    assert row["sort"] == [{"field": "created", "order": "DESC"}]
+    assert row["sort_mode"] == "PROJECT_RANK"
+    assert row["columns"] == ["summary", "customfield_13165"]
+    assert row["hidden"] == []
+
+
 def test_issue_key_by_ari_maps_numeric_id_to_key():
     issues = [{"id": "10005", "key": "PD-1"}, {"id": 10006, "key": "PD-2"}]
     mapping = _issue_key_by_ari(issues)
@@ -159,3 +184,43 @@ def test_flatten_changelog_one_row_per_changed_field():
     assert rows[0] == {"issue_key": "PHX-1", "changed_at": "2026-01-01",
                        "author": "A", "field": "status", "from": "To Do",
                        "to": "Done"}
+
+
+# --------------------------------------------------------------------------- #
+# JPD idea field cells (_cell)
+# --------------------------------------------------------------------------- #
+def test_cell_flattens_option_user_and_doc_values():
+    assert _cell({"value": "P0"}) == "P0"
+    assert _cell({"name": "Ready to Go-live"}) == "Ready to Go-live"
+    assert _cell({"displayName": "Md. Rafiul Islam"}) == "Md. Rafiul Islam"
+    doc = {"type": "doc", "content": [{"type": "paragraph", "content": [
+        {"type": "text", "text": "short description"}]}]}
+    assert _cell(doc) == "short description"
+    assert _cell("2026-07-15") == "2026-07-15"
+    assert _cell(3.5) == 3.5
+    assert _cell(None) is None
+
+
+def test_cell_flattens_multiselect_lists_and_drops_empties():
+    val = [{"value": "Integrations"}, {"value": "Platform focused"}]
+    assert _cell(val) == ["Integrations", "Platform focused"]
+    assert _cell([]) is None
+    assert _cell({"unknown": "shape"}) is None
+
+
+def test_cell_unwraps_cascading_select_parent_value():
+    assert _cell({"value": "Payments", "child": {"value": "Wallet"}}) == "Payments"
+
+
+def test_idea_row_first_nonnull_wins_for_duplicate_field_names():
+    # Six site fields share the name "Product Area"; a null from the wrong
+    # project's id must never clobber the real value, in either order.
+    names = {"customfield_1": "Product Area", "customfield_2": "Product Area"}
+    for order in (["customfield_1", "customfield_2"],
+                  ["customfield_2", "customfield_1"]):
+        row = {}
+        fields = {"customfield_1": None, "customfield_2": {"value": "Integrations"}}
+        for fid in order:
+            if row.get(names[fid]) is None:
+                row[names[fid]] = _cell(fields[fid])
+        assert row["Product Area"] == "Integrations"

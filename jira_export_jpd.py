@@ -22,8 +22,20 @@ import requests
 import jira_endpoints as EP
 from jira_export import adf_to_text, api_get, search_all_issues, write_csv, write_json
 
-VIEW_FIELDS = ("id uuid name emoji visualizationType containsArchived jql "
-               "rank createdAt updatedAt viewSetId")
+VIEW_FIELDS = (
+    "id uuid name emoji visualizationType containsArchived jql "
+    "rank createdAt updatedAt viewSetId groupOrder sortMode "
+    "groupBy { id jiraFieldKey } verticalGroupBy { id jiraFieldKey } "
+    "sort { field { id jiraFieldKey } order } "
+    "filter { kind field { id jiraFieldKey } "
+    "values { stringValue numericValue operator enumValue } } "
+    "fields { id jiraFieldKey } hidden { id jiraFieldKey }"
+)
+
+# Nested lists/dicts don't belong in CSV cells — the CSV keeps the flat
+# subset; jpd_views.json carries the full rows (the Tori importer reads JSON).
+CSV_VIEW_KEYS = ("project_key", "viewset", "view", "emoji", "type", "jql",
+                 "created", "updated")
 
 JPD_QUERY = """query jpdExport($id: ID!) {
   polarisProject(id: $id) {
@@ -69,17 +81,42 @@ def _issue_key_by_ari(issues):
     return {str(i.get("id")): i.get("key") for i in issues}
 
 
-def export_jpd(s, out_dir, projects, issues):
-    pd_projects = [p for p in projects
-                   if p.get("projectTypeKey") == "product_discovery"]
-    if not pd_projects:
-        print("    no product_discovery projects — skipping JPD export")
-        return
+def _fkey(field):
+    """PolarisIdeaField ref -> its jiraFieldKey string (None-safe)."""
+    return (field or {}).get("jiraFieldKey")
 
+
+def _aslist(v):
+    """Experimental schema: sort/filter may come back single or list."""
+    return v if isinstance(v, list) else ([] if v is None else [v])
+
+
+def _view_row(project_key, vs_path, v):
+    return {
+        "project_key": project_key, "viewset": vs_path,
+        "view": v.get("name"), "emoji": v.get("emoji"),
+        "type": v.get("visualizationType"), "jql": v.get("jql"),
+        "created": v.get("createdAt"), "updated": v.get("updatedAt"),
+        "contains_archived": v.get("containsArchived"),
+        "filter": [{"kind": f.get("kind"), "field": _fkey(f.get("field")),
+                    "values": f.get("values") or []}
+                   for f in _aslist(v.get("filter"))],
+        "group_by": _fkey(v.get("groupBy")),
+        "vertical_group_by": _fkey(v.get("verticalGroupBy")),
+        "group_order": v.get("groupOrder"),
+        "sort": [{"field": _fkey(sf.get("field")), "order": sf.get("order")}
+                 for sf in _aslist(v.get("sort"))],
+        "sort_mode": v.get("sortMode"),
+        "columns": [_fkey(f) for f in _aslist(v.get("fields"))],
+        "hidden": [_fkey(f) for f in _aslist(v.get("hidden"))],
+    }
+
+
+def export_jpd_views(s, out_dir, pd_projects):
+    """Viewsets + views only. Returns [(project, polarisProject data)] so
+    export_jpd can reuse the same GraphQL responses for insights."""
     cloud_id = api_get(s, EP.TENANT_INFO).get("cloudId")
-    key_by_id = _issue_key_by_ari(issues)
-
-    all_viewsets, view_rows, all_insights, insight_rows = [], [], [], []
+    all_viewsets, view_rows, project_data = [], [], []
     for p in pd_projects:
         ari = f"ari:cloud:jira:{cloud_id}:project/{p['id']}"
         try:
@@ -87,17 +124,30 @@ def export_jpd(s, out_dir, projects, issues):
         except (requests.HTTPError, RuntimeError) as e:
             print(f"    {p['key']}: JPD GraphQL failed ({e})")
             continue
-
+        project_data.append((p, data))
         for vs in data.get("viewsets") or []:
             vs["_project_key"] = p["key"]
             all_viewsets.append(vs)
         for vs_path, v in _walk_views(data.get("viewsets")):
-            view_rows.append({
-                "project_key": p["key"], "viewset": vs_path,
-                "view": v.get("name"), "emoji": v.get("emoji"),
-                "type": v.get("visualizationType"), "jql": v.get("jql"),
-                "created": v.get("createdAt"), "updated": v.get("updatedAt"),
-            })
+            view_rows.append(_view_row(p["key"], vs_path, v))
+    write_json(out_dir, "jpd_viewsets.json", all_viewsets)
+    write_csv(out_dir, "jpd_views.csv",
+              [{k: r[k] for k in CSV_VIEW_KEYS} for r in view_rows])
+    write_json(out_dir, "jpd_views.json", view_rows)
+    return project_data
+
+
+def export_jpd(s, out_dir, projects, issues):
+    pd_projects = [p for p in projects
+                   if p.get("projectTypeKey") == "product_discovery"]
+    if not pd_projects:
+        print("    no product_discovery projects — skipping JPD export")
+        return
+
+    key_by_id = _issue_key_by_ari(issues)
+
+    all_insights, insight_rows = [], []
+    for p, data in export_jpd_views(s, out_dir, pd_projects):
         for ins in data.get("insights") or []:
             ins["_project_key"] = p["key"]
             all_insights.append(ins)
@@ -112,34 +162,76 @@ def export_jpd(s, out_dir, projects, issues):
                 "urls": ", ".join(sn.get("url") or "" for sn in snippets if sn.get("url")),
             })
 
-    write_json(out_dir, "jpd_viewsets.json", all_viewsets)
-    write_csv(out_dir, "jpd_views.csv", view_rows)
-    write_json(out_dir, "jpd_views.json", view_rows)
     write_json(out_dir, "jpd_insights.json", all_insights)
     write_csv(out_dir, "jpd_insights.csv", insight_rows)
 
     _export_idea_fields(s, out_dir, pd_projects)
 
 
+def _cell(val):
+    """Flatten a REST field value to a JSON-friendly cell.
+
+    Option dict -> its label, user dict -> display name, ADF doc -> plain
+    text, list -> list of flattened members (empty -> None), None -> None.
+    Dicts with none of the known label keys flatten to None rather than
+    leaking raw API objects into the export.
+    """
+    if isinstance(val, list):
+        flat = [c for c in (_cell(v) for v in val) if c is not None]
+        return flat or None
+    if isinstance(val, dict):
+        if val.get("type") == "doc":
+            return adf_to_text(val).strip() or None
+        out = val.get("value") or val.get("name") or val.get("displayName")
+        return _cell(out) if isinstance(out, (dict, list)) else out
+    return val
+
+
+def _harvest_options(options, fid, val):
+    """Record select-option {id, value} pairs seen in a raw field value.
+
+    View filters (jpd_views.json) reference options by numeric id; nothing
+    else in the export maps those ids to labels, so they are collected here
+    while the raw values are still unflattened.
+    """
+    if isinstance(val, list):
+        for v in val:
+            _harvest_options(options, fid, v)
+    elif isinstance(val, dict) and "value" in val and val.get("id") is not None:
+        options.setdefault(fid, {})[str(val["id"])] = val["value"]
+
+
 def _export_idea_fields(s, out_dir, pd_projects):
-    """Ideas with JPD custom field values (RICE, impact, effort, ...)."""
-    jpd_fields = [f for f in api_get(s, EP.FIELDS)
-                  if "polaris" in ((f.get("schema") or {}).get("custom") or "")]
-    fids = [f["id"] for f in jpd_fields]
-    names = {f["id"]: f["name"] for f in jpd_fields}
+    """Ideas with every custom field value, JPD-native and standard alike.
+
+    JPD boards mix polaris fields with plain Jira custom fields placed on
+    the idea screens (selects, multicheckboxes, text...), so ALL custom
+    fields are requested — filtering on "polaris" silently dropped the
+    standard ones. Several site fields can share one display name (this
+    site has six "Product Area"s); first non-null value wins so a null
+    from an unrelated same-named field never clobbers a real one.
+
+    Also writes jpd_field_options.json ({field id: {option id: label}}) so
+    the importer can resolve view filters that reference options by id.
+    """
+    custom = [f for f in api_get(s, EP.FIELDS)
+              if f.get("id", "").startswith("customfield_")]
+    fids = [f["id"] for f in custom]
+    names = {f["id"]: f["name"] for f in custom}
     keys = ", ".join(p["key"] for p in pd_projects)
     ideas = search_all_issues(s, f"project in ({keys}) order by created ASC",
                               ["summary", "status", "created"] + fids)
-    rows = []
+    rows, options = [], {}
     for iss in ideas:
         f = iss.get("fields") or {}
         row = {"key": iss.get("key"), "summary": f.get("summary"),
                "status": ((f.get("status") or {}).get("name"))}
         for fid in fids:
-            val = f.get(fid)
-            if isinstance(val, dict):
-                val = val.get("value") or val.get("name") or val
-            row[names[fid]] = val
+            _harvest_options(options, fid, f.get(fid))
+            name = names[fid]
+            if row.get(name) is None:
+                row[name] = _cell(f.get(fid))
         rows.append(row)
     write_json(out_dir, "jpd_ideas.json", rows)
     write_csv(out_dir, "jpd_ideas.csv", rows)
+    write_json(out_dir, "jpd_field_options.json", options)
