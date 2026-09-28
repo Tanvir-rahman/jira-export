@@ -18,9 +18,9 @@ python jira_export.py
 
 - 🏃 **Sprint reports & velocity** — committed vs completed vs punted per
   sprint, straight from the same API the Jira UI uses
-- 💡 **Jira Product Discovery** — views, viewsets, insights, and idea
-  scores (Impact/Effort/Confidence/Reach) via Atlassian's experimental
-  GraphQL API
+- 💡 **Jira Product Discovery** — views with their full config (grouping,
+  sort, filters, visible columns), viewsets, insights, and ideas with every
+  custom field value, via Atlassian's experimental GraphQL API
 - 📜 **Full audit log**, backlog rank order, swimlanes & quick filters,
   workflow/permission/notification schemes, license seats
 - 🕐 **Complete issue history** (changelogs), comments, worklogs,
@@ -76,7 +76,7 @@ python jira_export.py --jql "project = ABC"
 | **Collaboration** | `comments.json/csv`, `worklogs.json/csv` |
 | **Agile** | `boards.json`, `sprints.csv`, `sprint_reports.csv` (committed vs completed vs punted per sprint), `velocity.csv`, `burndowns.json`, `board_columns.csv`, `board_settings.json` (swimlanes, quick filters), `backlog_order.csv` (exact rank), `board_epics.csv` |
 | **People** | `users.csv`, `groups.json`, `group_members.csv`, `teams.csv` + `team_members.csv` (Atlassian Teams), `project_roles.csv` |
-| **Product Discovery** | `jpd_views.csv`, `jpd_viewsets.json`, `jpd_insights.csv` (mapped to idea keys), `jpd_ideas.csv` (Value/Effort/Impact/Reach/Confidence scores) |
+| **Product Discovery** | `jpd_views.json` (full view config: grouping, sort, filters, columns, hidden fields) + `jpd_views.csv` (flat subset), `jpd_viewsets.json`, `jpd_insights.csv` (mapped to idea keys), `jpd_ideas.json/csv` (every custom field on the idea screens, not just RICE), `jpd_field_options.json` (select option id → label, resolves view filters) |
 | **Projects & config** | `projects.csv`, `versions.csv`, `components.csv`, `project_features.csv`, `workflows.json`, `workflow_schemes.json`, `permission_schemes.json`, `notification_schemes.json`, `issue_security_schemes.json`, `screens.json`, `field_configurations.json`, `issue_type_schemes.json`, `priority_schemes.json` |
 | **Site** | `audit_log.csv` (full Jira audit trail), `dashboards.json`, `dashboard_gadgets.csv`, `filters.csv`, `labels.json`, `issue_link_types.json`, `application_roles.json` (license seats), `site_info.json` |
 | **Reference** | `fields.json`, `issuetypes.json`, `statuses.json`, `priorities.json`, `resolutions.json` |
@@ -140,8 +140,9 @@ Not exportable with an API token (verified, not for lack of trying):
 - **Other users' email addresses** — GDPR-hidden unless the user opts in;
   join on `accountId` instead
 - **Notification emails Jira sent** — no API exists
-- **JPD formula values (RICE)** and per-view filter results — computed
-  client-side
+- **JPD formula values (RICE)** and per-view filter *results* — computed
+  client-side. The filter *definitions* are exported (`jpd_views.json`);
+  re-run them yourself to get the rows
 - **Org-level data** (last logins, org audit log) — requires an org admin
   API key against admin.atlassian.com
 

@@ -133,6 +133,16 @@ Hard-won facts — do not "fix" these without re-verifying against a live site:
 9. **Backlog rank order** comes from the *returned order* of
    `/rest/agile/1.0/board/{id}/backlog` — there is no rank number field.
 10. **Jira comments are flat.** No threads. Do not model reply trees.
+11. **JPD idea screens mix field types.** Filtering custom fields on
+    `"polaris" in schema.custom` silently drops the plain Jira custom fields
+    placed on idea screens. Request all `customfield_*` instead.
+12. **Field display names are not unique per site.** Several fields can share
+    one name (one site had six "Product Area"s) — when keying idea rows by
+    display name, first non-null value wins so a null from an unrelated
+    same-named field never clobbers a real one.
+13. **View filters reference select options by numeric id.** Nothing else in
+    the export maps id → label, so `jpd_field_options.json` is harvested from
+    the raw idea field values before they are flattened.
 
 ## Known-impossible with an API token
 
@@ -143,7 +153,8 @@ Do not attempt; verified dead ends (HTTP status in parens):
 - Webhook registrations (403 — app-only endpoint)
 - Other users' hidden emails (GDPR) — org admin directory export only
 - Notification emails Jira sent — no API exists
-- JPD per-view filter results / RICE values — client-side computed
+- JPD per-view filter *results* / RICE values — client-side computed
+  (filter *definitions* do export, in `jpd_views.json`)
 - Org-level audit log & last-login times — needs org admin API key
   (admin.atlassian.com, different auth scheme entirely)
 - Comment reactions — internal API only
